@@ -4,6 +4,60 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MinhasCobranças</title>
+<meta name="theme-color" content="#e8547a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Minhas Cobranças">
+<link rel="manifest" id="pwa-manifest">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script>
+// Inline manifest via Blob
+const manifest = {
+  name: "Minhas Cobranças",
+  short_name: "Cobranças",
+  description: "Gerencie suas cobranças de clientes",
+  start_url: "./",
+  display: "standalone",
+  background_color: "#e8547a",
+  theme_color: "#e8547a",
+  orientation: "portrait-primary",
+  icons: [
+    { src: makeIcon(192), sizes: "192x192", type: "image/png", purpose: "any maskable" },
+    { src: makeIcon(512), sizes: "512x512", type: "image/png", purpose: "any maskable" }
+  ]
+};
+function makeIcon(size) {
+  const canvas = document.createElement('canvas');
+  canvas.width = size; canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  // Background
+  ctx.fillStyle = '#e8547a';
+  ctx.fillRect(0, 0, size, size);
+  // Round corners visual
+  ctx.fillStyle = '#ffffff';
+  ctx.globalAlpha = 0.15;
+  ctx.beginPath();
+  ctx.arc(size/2, size/2, size*0.45, 0, Math.PI*2);
+  ctx.fill();
+  ctx.globalAlpha = 1;
+  // Letter M
+  ctx.fillStyle = '#ffffff';
+  ctx.font = `bold ${size*0.42}px serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('M', size/2, size/2 + size*0.03);
+  return canvas.toDataURL('image/png');
+}
+document.addEventListener('DOMContentLoaded', function() {
+  try {
+    const icons = [192, 512].map(s => ({ src: makeIcon(s), sizes: s+'x'+s, type: 'image/png', purpose: 'any maskable' }));
+    const m = { ...manifest, icons };
+    const blob = new Blob([JSON.stringify(m)], {type: 'application/json'});
+    document.getElementById('pwa-manifest').href = URL.createObjectURL(blob);
+  } catch(e) {}
+});
+</script>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -569,6 +623,7 @@
 
 <header>
   <div class="logo">Minhas<span>Cobranças</span></div>
+  <div id="save-indicator" style="font-size:11px;color:#1d9e75;font-weight:600;opacity:0;transition:opacity 0.5s;display:flex;align-items:center;gap:4px;">✓ Salvo</div>
   <div class="tabs">
     <button class="tab-btn active" onclick="irPara('nova', this)">Nova Cobrança</button>
     <button class="tab-btn" onclick="irPara('lista', this)">Clientes</button>
@@ -602,10 +657,36 @@
           <input type="number" id="f-valor" placeholder="0,00" min="0" step="0.01">
         </div>
         <div class="form-group">
+          <label>Data da compra</label>
+          <input type="date" id="f-datacompra">
+        </div>
+        <div class="form-group">
+          <label>Número de parcelas</label>
+          <select id="f-parcelas" onchange="atualizarParcelas()">
+            <option value="1">À vista (1x)</option>
+            <option value="2">2x</option>
+            <option value="3">3x</option>
+            <option value="4">4x</option>
+            <option value="5">5x</option>
+            <option value="6">6x</option>
+            <option value="8">8x</option>
+            <option value="10">10x</option>
+            <option value="12">12x</option>
+          </select>
+        </div>
+        <div class="form-group" id="grupo-vencimento-unico">
           <label>Data de vencimento</label>
           <input type="date" id="f-vencimento">
         </div>
       </div>
+
+      <!-- Preview de parcelas -->
+      <div id="parcelas-preview" style="display:none; margin-bottom:14px; background:var(--rosa-claro); border-radius:12px; padding:1rem 1.25rem; border:1px solid #f5b8cc;">
+        <div style="font-size:13px;font-weight:600;color:var(--rosa-escuro);margin-bottom:8px;">📅 Datas de vencimento das parcelas</div>
+        <div id="parcelas-lista" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
+        <p style="font-size:12px;color:var(--rosa-escuro);margin-top:8px;opacity:0.8;">As datas são calculadas mensalmente a partir da data da compra. Você pode ajustar a data da compra para alterar os vencimentos.</p>
+      </div>
+
       <div class="form-group" style="margin-bottom: 14px;">
         <label>Descrição do produto/serviço *</label>
         <textarea id="f-descricao" placeholder="Ex: 3 peças de roupa — vestido floral, blusa e calça jeans"></textarea>
@@ -638,6 +719,16 @@
 
   <!-- RELATÓRIO -->
   <div class="page" id="page-relatorio">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:1.25rem;">
+      <button class="btn btn-primary" onclick="gerarPDF()" style="gap:8px;">📄 Gerar Relatório PDF</button>
+      <button class="btn btn-ghost" onclick="fazerBackup()" style="gap:8px;">💾 Salvar Backup</button>
+      <button class="btn btn-ghost" onclick="document.getElementById('input-restaurar').click()" style="gap:8px;">📂 Restaurar Backup</button>
+      <input type="file" id="input-restaurar" accept=".json" style="display:none" onchange="restaurarBackup(event)">
+    </div>
+    <div style="background:#e1f5ee;border:1px solid #9ddfc5;border-radius:12px;padding:12px 16px;font-size:13px;color:#0f6e56;margin-bottom:1.25rem;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <span style="font-size:18px;">🔒</span>
+      <span><strong>Seus dados ficam salvos neste dispositivo.</strong> Faça backups regulares pelo botão <em>"Salvar Backup"</em> para não perder nada se trocar de celular ou limpar o navegador.</span>
+    </div>
     <div class="resumo-grid" id="resumo-cards"></div>
     <div id="relatorio-lista"></div>
   </div>
@@ -663,7 +754,11 @@
         <input type="number" id="edit-valor" min="0" step="0.01">
       </div>
       <div class="form-group">
-        <label>Vencimento</label>
+        <label>Data da compra</label>
+        <input type="date" id="edit-datacompra">
+      </div>
+      <div class="form-group">
+        <label>Vencimento (1ª parcela)</label>
         <input type="date" id="edit-vencimento">
       </div>
     </div>
@@ -703,6 +798,12 @@ let wpClienteId = null;
 
 function salvar() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(dados));
+  const ind = document.getElementById('save-indicator');
+  if (ind) {
+    ind.style.opacity = '1';
+    clearTimeout(window._saveTimer);
+    window._saveTimer = setTimeout(() => ind.style.opacity = '0', 2000);
+  }
 }
 
 function gerarId() {
@@ -755,9 +856,59 @@ function irParaMobile(page, btn) {
 }
 
 function limparForm() {
-  ['f-nome','f-whatsapp','f-valor','f-vencimento','f-descricao'].forEach(id => {
-    document.getElementById(id).value = '';
+  ['f-nome','f-whatsapp','f-valor','f-vencimento','f-datacompra','f-descricao'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
   });
+  const parcEl = document.getElementById('f-parcelas');
+  if (parcEl) parcEl.value = '1';
+  const prev = document.getElementById('parcelas-preview');
+  if (prev) prev.style.display = 'none';
+  const gv = document.getElementById('grupo-vencimento-unico');
+  if (gv) gv.style.display = 'block';
+}
+
+function calcularVencimentos(dataCompra, numParcelas) {
+  if (!dataCompra || numParcelas < 1) return [];
+  const datas = [];
+  const [y, m, d] = dataCompra.split('-').map(Number);
+  for (let i = 1; i <= numParcelas; i++) {
+    const dt = new Date(y, m - 1 + i, d);
+    const yy = dt.getFullYear();
+    const mm = String(dt.getMonth() + 1).padStart(2, '0');
+    const dd = String(dt.getDate()).padStart(2, '0');
+    datas.push(`${yy}-${mm}-${dd}`);
+  }
+  return datas;
+}
+
+function atualizarParcelas() {
+  const numParcelas = parseInt(document.getElementById('f-parcelas').value);
+  const dataCompra = document.getElementById('f-datacompra').value;
+  const grupoVenc = document.getElementById('grupo-vencimento-unico');
+  const preview = document.getElementById('parcelas-preview');
+  const lista = document.getElementById('parcelas-lista');
+
+  if (numParcelas <= 1) {
+    grupoVenc.style.display = 'block';
+    preview.style.display = 'none';
+    return;
+  }
+
+  grupoVenc.style.display = 'none';
+
+  if (!dataCompra) {
+    preview.style.display = 'block';
+    lista.innerHTML = '<span style="font-size:13px;color:var(--rosa-escuro);">⚠️ Informe a data da compra para calcular os vencimentos.</span>';
+    return;
+  }
+
+  const datas = calcularVencimentos(dataCompra, numParcelas);
+  preview.style.display = 'block';
+  lista.innerHTML = datas.map((d, i) => `
+    <span style="background:white;border:1px solid #f5b8cc;border-radius:20px;padding:4px 12px;font-size:12px;font-weight:600;color:var(--rosa-escuro);">
+      ${i + 1}ª — ${fmtData(d)}
+    </span>`).join('');
 }
 
 function cadastrar() {
@@ -765,11 +916,24 @@ function cadastrar() {
   const valor = parseFloat(document.getElementById('f-valor').value);
   const descricao = document.getElementById('f-descricao').value.trim();
   const whatsapp = document.getElementById('f-whatsapp').value.trim();
-  const vencimento = document.getElementById('f-vencimento').value;
+  const dataCompra = document.getElementById('f-datacompra').value;
+  const numParcelas = parseInt(document.getElementById('f-parcelas').value) || 1;
 
   if (!nome) { alert('Por favor, informe o nome da cliente.'); return; }
   if (!valor || valor <= 0) { alert('Por favor, informe o valor total.'); return; }
   if (!descricao) { alert('Por favor, informe a descrição.'); return; }
+
+  let vencimento = '';
+  let parcelas = null;
+
+  if (numParcelas <= 1) {
+    vencimento = document.getElementById('f-vencimento').value;
+  } else {
+    if (!dataCompra) { alert('Informe a data da compra para calcular as parcelas.'); return; }
+    const datas = calcularVencimentos(dataCompra, numParcelas);
+    vencimento = datas[0]; // primeiro vencimento
+    parcelas = datas.map((d, i) => ({ numero: i + 1, vencimento: d, pago: false }));
+  }
 
   dados.push({
     id: gerarId(),
@@ -777,7 +941,10 @@ function cadastrar() {
     whatsapp,
     valor,
     descricao,
+    dataCompra,
     vencimento,
+    numParcelas,
+    parcelas,
     pagamentos: [],
     criadoEm: new Date().toISOString()
   });
@@ -889,7 +1056,19 @@ function cardCliente(c) {
 
     <div class="cliente-body">
       <p style="font-size:13px;color:var(--texto-muted);margin:12px 0 8px;"><strong style="color:var(--texto)">Produto/Serviço:</strong> ${c.descricao}</p>
-      ${c.vencimento ? `<p style="font-size:13px;color:var(--texto-muted);margin-bottom:8px;"><strong style="color:var(--texto)">Vencimento:</strong> ${fmtData(c.vencimento)}</p>` : ''}
+      ${c.dataCompra ? `<p style="font-size:13px;color:var(--texto-muted);margin-bottom:6px;"><strong style="color:var(--texto)">Data da compra:</strong> ${fmtData(c.dataCompra)}</p>` : ''}
+      ${c.numParcelas > 1 ? `
+      <div style="margin-bottom:10px;">
+        <p style="font-size:13px;color:var(--texto-muted);margin-bottom:6px;"><strong style="color:var(--texto)">Parcelas (${c.numParcelas}x de ${fmt(c.valor / c.numParcelas)}):</strong></p>
+        <div style="display:flex;flex-wrap:wrap;gap:5px;">
+          ${(c.parcelas || []).map((p, i) => {
+            const sv = statusVencimento(p.vencimento);
+            const cor = sv && sv.tipo === 'vencido' ? '#a32d2d' : sv && sv.tipo === 'hoje' ? '#a32d2d' : sv && sv.tipo === 'proximo' ? '#ba7517' : '#444';
+            const bg = sv && sv.tipo === 'vencido' ? '#fcebeb' : sv && sv.tipo === 'proximo' ? '#faeeda' : '#f1efe8';
+            return `<span style="background:${bg};border-radius:20px;padding:3px 10px;font-size:12px;font-weight:600;color:${cor};">${p.numero}ª — ${fmtData(p.vencimento)}</span>`;
+          }).join('')}
+        </div>
+      </div>` : (c.vencimento ? `<p style="font-size:13px;color:var(--texto-muted);margin-bottom:8px;"><strong style="color:var(--texto)">Vencimento:</strong> ${fmtData(c.vencimento)}</p>` : '')}
 
       <div class="progresso-section">
         <div class="progresso-row">
@@ -983,6 +1162,7 @@ function editarCliente(id) {
   document.getElementById('edit-nome').value = c.nome;
   document.getElementById('edit-whatsapp').value = c.whatsapp || '';
   document.getElementById('edit-valor').value = c.valor;
+  document.getElementById('edit-datacompra').value = c.dataCompra || '';
   document.getElementById('edit-vencimento').value = c.vencimento || '';
   document.getElementById('edit-descricao').value = c.descricao;
   document.getElementById('modal-editar').classList.add('aberto');
@@ -999,7 +1179,16 @@ function salvarEdicao() {
   c.nome = document.getElementById('edit-nome').value.trim();
   c.whatsapp = document.getElementById('edit-whatsapp').value.trim();
   c.valor = parseFloat(document.getElementById('edit-valor').value);
-  c.vencimento = document.getElementById('edit-vencimento').value;
+  const novaDataCompra = document.getElementById('edit-datacompra').value;
+  const novoVenc = document.getElementById('edit-vencimento').value;
+  c.dataCompra = novaDataCompra;
+  c.vencimento = novoVenc;
+  // Recalcular parcelas se tiver parcelamento
+  if (c.numParcelas > 1 && novaDataCompra) {
+    const datas = calcularVencimentos(novaDataCompra, c.numParcelas);
+    c.parcelas = datas.map((d, i) => ({ numero: i + 1, vencimento: d, pago: false }));
+    c.vencimento = datas[0];
+  }
   c.descricao = document.getElementById('edit-descricao').value.trim();
   salvar();
   fecharModal();
@@ -1132,6 +1321,269 @@ function renderRelatorio() {
     }).join('')}`;
 }
 
+
+// ============ BACKUP / RESTAURAR ============
+function fazerBackup() {
+  const json = JSON.stringify({ versao: 2, dados, exportadoEm: new Date().toISOString() }, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const hoje = new Date().toISOString().split('T')[0];
+  a.href = url;
+  a.download = `cobrancas-backup-${hoje}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function restaurarBackup(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const obj = JSON.parse(e.target.result);
+      const lista = obj.dados || obj;
+      if (!Array.isArray(lista)) throw new Error('Formato inválido');
+      if (!confirm(`Restaurar ${lista.length} cobrança(s)? Os dados atuais serão substituídos.`)) return;
+      dados = lista;
+      salvar();
+      renderLista();
+      renderRelatorio();
+      alert('✅ Backup restaurado com sucesso!');
+    } catch(err) {
+      alert('❌ Arquivo inválido. Use um backup gerado por este app.');
+    }
+  };
+  reader.readAsText(file);
+  event.target.value = '';
+}
+
+// ============ GERAR PDF ============
+function gerarPDF() {
+  if (typeof window.jspdf === 'undefined') {
+    alert('Aguarde o carregamento da biblioteca de PDF e tente novamente.');
+    return;
+  }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const W = 210, margin = 14;
+  let y = 0;
+
+  function novaLinha(h) {
+    y += h;
+    if (y > 270) { doc.addPage(); y = 18; }
+  }
+
+  function linha(espaco) { novaLinha(espaco || 5); }
+
+  // Cabeçalho
+  doc.setFillColor(232, 84, 122);
+  doc.rect(0, 0, W, 28, 'F');
+  doc.setTextColor(255,255,255);
+  doc.setFontSize(18);
+  doc.setFont('helvetica','bold');
+  doc.text('Minhas Cobranças', margin, 12);
+  doc.setFontSize(9);
+  doc.setFont('helvetica','normal');
+  const agora = new Date();
+  doc.text('Relatório gerado em ' + agora.toLocaleDateString('pt-BR') + ' às ' + agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}), margin, 20);
+  doc.text('Total de clientes: ' + dados.length, W - margin, 20, {align:'right'});
+  y = 36;
+
+  // Resumo financeiro
+  const totalGeral = dados.reduce((s,c) => s + c.valor, 0);
+  const totalRecebido = dados.reduce((s,c) => s + totalPago(c), 0);
+  const totalPendente = dados.reduce((s,c) => s + saldoRestante(c), 0);
+  const totalVencidas = dados.filter(c => { const sv = statusVencimento(c.vencimento); return sv && sv.tipo === 'vencido' && saldoRestante(c) > 0; }).length;
+
+  doc.setFontSize(11);
+  doc.setFont('helvetica','bold');
+  doc.setTextColor(44,44,42);
+  doc.text('RESUMO FINANCEIRO', margin, y);
+  linha(7);
+
+  const cards = [
+    { label: 'Total Cobrado', valor: totalGeral, cor: [232,84,122] },
+    { label: 'Total Recebido', valor: totalRecebido, cor: [29,158,117] },
+    { label: 'A Receber', valor: totalPendente, cor: [163,45,45] },
+  ];
+  const cw = (W - margin*2 - 8) / 3;
+  cards.forEach((card, i) => {
+    const x = margin + i * (cw + 4);
+    doc.setFillColor(card.cor[0], card.cor[1], card.cor[2]);
+    doc.roundedRect(x, y, cw, 16, 2, 2, 'F');
+    doc.setTextColor(255,255,255);
+    doc.setFontSize(7);
+    doc.setFont('helvetica','normal');
+    doc.text(card.label.toUpperCase(), x + cw/2, y + 5, {align:'center'});
+    doc.setFontSize(10);
+    doc.setFont('helvetica','bold');
+    doc.text(fmt(card.valor), x + cw/2, y + 12, {align:'center'});
+  });
+  linha(22);
+  doc.setTextColor(44,44,42);
+  doc.setFontSize(9);
+  doc.setFont('helvetica','normal');
+  doc.text(`Cobranças vencidas em aberto: ${totalVencidas}`, margin, y);
+  linha(10);
+
+  // Linha separadora
+  doc.setDrawColor(220,216,212);
+  doc.line(margin, y, W - margin, y);
+  linha(7);
+
+  // Listagem detalhada
+  doc.setFontSize(11);
+  doc.setFont('helvetica','bold');
+  doc.setTextColor(44,44,42);
+  doc.text('DETALHAMENTO POR CLIENTE', margin, y);
+  linha(8);
+
+  const sorted = [...dados].sort((a,b) => {
+    const pa = totalPago(a) >= a.valor ? 1 : 0;
+    const pb = totalPago(b) >= b.valor ? 1 : 0;
+    if (pa !== pb) return pa - pb;
+    return (a.vencimento || '').localeCompare(b.vencimento || '');
+  });
+
+  sorted.forEach((c, idx) => {
+    const pago = totalPago(c);
+    const restante = saldoRestante(c);
+    const quitado = restante <= 0;
+    const sv = statusVencimento(c.vencimento);
+    const pct = Math.min(100, Math.round((pago / c.valor) * 100));
+
+    // Card background
+    if (y > 262) { doc.addPage(); y = 18; }
+    const cardH = 38 + (c.pagamentos && c.pagamentos.length ? c.pagamentos.length * 6 + 8 : 0)
+                     + (c.numParcelas > 1 && c.parcelas ? Math.ceil(c.parcelas.length / 3) * 6 + 6 : 0);
+    doc.setFillColor(248, 246, 243);
+    doc.roundedRect(margin, y, W - margin*2, cardH, 2, 2, 'F');
+    doc.setDrawColor(226, 221, 216);
+    doc.roundedRect(margin, y, W - margin*2, cardH, 2, 2, 'S');
+
+    // Status badge
+    if (quitado) {
+      doc.setFillColor(29,158,117);
+    } else if (sv && sv.tipo === 'vencido') {
+      doc.setFillColor(163,45,45);
+    } else if (sv && sv.tipo === 'proximo' || sv && sv.tipo === 'hoje') {
+      doc.setFillColor(186,117,23);
+    } else {
+      doc.setFillColor(136,135,128);
+    }
+    const statusTxt = quitado ? 'QUITADA' : sv ? sv.texto.toUpperCase() : 'PENDENTE';
+    const stW = doc.getTextWidth(statusTxt) + 6;
+    doc.roundedRect(W - margin - stW, y + 4, stW, 6, 1, 1, 'F');
+    doc.setTextColor(255,255,255);
+    doc.setFontSize(6);
+    doc.setFont('helvetica','bold');
+    doc.text(statusTxt, W - margin - stW/2, y + 8.2, {align:'center'});
+
+    // Nome
+    doc.setTextColor(44,44,42);
+    doc.setFontSize(10);
+    doc.setFont('helvetica','bold');
+    doc.text(c.nome, margin + 4, y + 9);
+
+    // Descrição
+    doc.setFontSize(8);
+    doc.setFont('helvetica','normal');
+    doc.setTextColor(136,135,128);
+    const desc = c.descricao.length > 60 ? c.descricao.substring(0,60)+'...' : c.descricao;
+    doc.text(desc, margin + 4, y + 15);
+
+    // Valores
+    doc.setFontSize(8);
+    doc.setTextColor(44,44,42);
+    doc.text(`Total: ${fmt(c.valor)}`, margin + 4, y + 21);
+    doc.setTextColor(29,158,117);
+    doc.text(`Pago: ${fmt(pago)}`, margin + 55, y + 21);
+    if (!quitado) {
+      doc.setTextColor(232,84,122);
+      doc.text(`Falta: ${fmt(restante)}`, margin + 106, y + 21);
+    }
+
+    // Data compra / vencimento
+    doc.setTextColor(136,135,128);
+    doc.setFontSize(7.5);
+    let infoExtra = '';
+    if (c.dataCompra) infoExtra += `Compra: ${fmtData(c.dataCompra)}  `;
+    if (c.numParcelas > 1) infoExtra += `${c.numParcelas}x de ${fmt(c.valor/c.numParcelas)}`;
+    else if (c.vencimento) infoExtra += `Vencimento: ${fmtData(c.vencimento)}`;
+    if (infoExtra) doc.text(infoExtra, margin + 4, y + 27);
+
+    // Barra progresso
+    const barX = margin + 4, barY = y + 30, barW = W - margin*2 - 8, barH2 = 3;
+    doc.setFillColor(226,221,216);
+    doc.roundedRect(barX, barY, barW, barH2, 1, 1, 'F');
+    if (pct > 0) {
+      doc.setFillColor(quitado ? 29 : 232, quitado ? 158 : 84, quitado ? 117 : 122);
+      doc.roundedRect(barX, barY, barW * pct/100, barH2, 1, 1, 'F');
+    }
+    doc.setTextColor(136,135,128);
+    doc.setFontSize(7);
+    doc.text(pct+'%', W - margin - 4, barY + 2.5, {align:'right'});
+
+    let innerY = y + 36;
+
+    // Parcelas
+    if (c.numParcelas > 1 && c.parcelas && c.parcelas.length) {
+      doc.setFontSize(7.5);
+      doc.setFont('helvetica','bold');
+      doc.setTextColor(136,135,128);
+      doc.text('PARCELAS:', margin + 4, innerY);
+      innerY += 5;
+      doc.setFont('helvetica','normal');
+      c.parcelas.forEach((p, pi) => {
+        const col = pi % 3;
+        const row = Math.floor(pi / 3);
+        const px = margin + 4 + col * 58;
+        const py = innerY + row * 6;
+        const psv = statusVencimento(p.vencimento);
+        if (psv && psv.tipo === 'vencido') doc.setTextColor(163,45,45);
+        else if (psv && (psv.tipo === 'proximo' || psv.tipo === 'hoje')) doc.setTextColor(186,117,23);
+        else doc.setTextColor(44,44,42);
+        doc.text(`${p.numero}ª: ${fmtData(p.vencimento)}`, px, py);
+      });
+      innerY += Math.ceil(c.parcelas.length / 3) * 6 + 2;
+    }
+
+    // Pagamentos registrados
+    if (c.pagamentos && c.pagamentos.length) {
+      doc.setFontSize(7.5);
+      doc.setFont('helvetica','bold');
+      doc.setTextColor(136,135,128);
+      doc.text('PAGAMENTOS RECEBIDOS:', margin + 4, innerY);
+      innerY += 1;
+      doc.setFont('helvetica','normal');
+      c.pagamentos.forEach(p => {
+        innerY += 6;
+        doc.setTextColor(29,158,117);
+        doc.text(`+ ${fmt(p.valor)}`, margin + 4, innerY);
+        doc.setTextColor(136,135,128);
+        doc.text(`${fmtData(p.data)}${p.obs ? '  ' + p.obs : ''}`, margin + 30, innerY);
+      });
+    }
+
+    y += cardH + 5;
+  });
+
+  // Rodapé
+  const totalPages = doc.getNumberOfPages();
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i);
+    doc.setFontSize(8);
+    doc.setTextColor(136,135,128);
+    doc.setFont('helvetica','normal');
+    doc.text('Minhas Cobranças · Relatório Confidencial', margin, 290);
+    doc.text(`Página ${i} de ${totalPages}`, W - margin, 290, {align:'right'});
+  }
+
+  const hoje = new Date().toISOString().split('T')[0];
+  doc.save(`relatorio-cobrancas-${hoje}.pdf`);
+}
+
 // Fechar modais ao clicar fora
 document.getElementById('modal-editar').addEventListener('click', function(e) {
   if (e.target === this) fecharModal();
@@ -1141,7 +1593,110 @@ document.getElementById('modal-whatsapp').addEventListener('click', function(e) 
 });
 
 // Inicializar
+document.getElementById('f-datacompra').addEventListener('change', atualizarParcelas);
+document.getElementById('f-parcelas').addEventListener('change', atualizarParcelas);
 renderLista();
 </script>
+
+<!-- PWA INSTALL BANNER -->
+<div id="pwa-banner" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:9999;background:white;border-top:1px solid #e2ddd8;padding:14px 16px;box-shadow:0 -4px 20px rgba(0,0,0,0.12);display:none;align-items:center;gap:12px;">
+  <div style="width:44px;height:44px;background:#e8547a;border-radius:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:22px;">💰</div>
+  <div style="flex:1;">
+    <div style="font-weight:600;font-size:14px;color:#2c2c2a;">Instalar Minhas Cobranças</div>
+    <div style="font-size:12px;color:#888780;">Acesse rápido, funciona offline</div>
+  </div>
+  <button id="pwa-install-btn" style="background:#e8547a;color:white;border:none;border-radius:9px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap;">Instalar</button>
+  <button onclick="document.getElementById('pwa-banner').style.display='none';localStorage.setItem('pwa-dismissed','1');" style="background:none;border:none;font-size:20px;cursor:pointer;color:#888;padding:4px;">×</button>
+</div>
+
+<!-- iOS INSTALL INSTRUCTIONS MODAL -->
+<div id="ios-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;align-items:flex-end;justify-content:center;">
+  <div style="background:white;border-radius:20px 20px 0 0;padding:2rem;width:100%;max-width:500px;animation:slideUp 0.3s ease;">
+    <div style="font-family:'Playfair Display',serif;font-size:18px;font-weight:600;margin-bottom:1rem;">📱 Instalar no iPhone</div>
+    <div style="font-size:14px;color:#555;line-height:1.7;">
+      <p style="margin-bottom:12px;">Para adicionar à tela inicial do seu iPhone:</p>
+      <div style="background:#f8f6f3;border-radius:12px;padding:1rem;margin-bottom:8px;">
+        <p>1️⃣  Toque no botão <strong>Compartilhar</strong> <span style="font-size:18px;">⬆️</span> na barra do Safari</p>
+      </div>
+      <div style="background:#f8f6f3;border-radius:12px;padding:1rem;margin-bottom:8px;">
+        <p>2️⃣  Role para baixo e toque em <strong>"Adicionar à Tela de Início"</strong></p>
+      </div>
+      <div style="background:#f8f6f3;border-radius:12px;padding:1rem;">
+        <p>3️⃣  Toque em <strong>"Adicionar"</strong> no canto superior direito</p>
+      </div>
+    </div>
+    <button onclick="document.getElementById('ios-modal').style.display='none';" style="margin-top:1.25rem;width:100%;background:#e8547a;color:white;border:none;border-radius:10px;padding:12px;font-size:15px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;">Entendi!</button>
+  </div>
+</div>
+
+<script>
+// Service Worker
+if ('serviceWorker' in navigator) {
+  const swCode = `
+    const CACHE = 'cobrancas-v1';
+    self.addEventListener('install', e => {
+      e.waitUntil(caches.open(CACHE).then(c => c.addAll(['/'])));
+      self.skipWaiting();
+    });
+    self.addEventListener('activate', e => {
+      e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))));
+      self.clients.claim();
+    });
+    self.addEventListener('fetch', e => {
+      e.respondWith(caches.match(e.request).then(r => r || fetch(e.request).catch(() => caches.match('/'))));
+    });
+  `;
+  try {
+    const blob = new Blob([swCode], {type: 'application/javascript'});
+    navigator.serviceWorker.register(URL.createObjectURL(blob)).catch(()=>{});
+  } catch(e) {}
+}
+
+// Install prompt logic
+let deferredPrompt = null;
+const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
+const isInStandalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+const dismissed = localStorage.getItem('pwa-dismissed');
+
+window.addEventListener('beforeinstallprompt', function(e) {
+  e.preventDefault();
+  deferredPrompt = e;
+  if (!isInStandalone && !dismissed) {
+    setTimeout(() => {
+      const b = document.getElementById('pwa-banner');
+      b.style.display = 'flex';
+    }, 1500);
+  }
+});
+
+document.getElementById('pwa-install-btn').addEventListener('click', async function() {
+  if (deferredPrompt) {
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    deferredPrompt = null;
+    document.getElementById('pwa-banner').style.display = 'none';
+    if (outcome === 'accepted') localStorage.setItem('pwa-installed', '1');
+  }
+});
+
+// iOS: show instructions if on Safari iOS and not installed
+if (isIOS && !isInStandalone && !dismissed) {
+  setTimeout(() => {
+    const b = document.getElementById('pwa-banner');
+    b.style.display = 'flex';
+    document.getElementById('pwa-install-btn').textContent = 'Como instalar';
+    document.getElementById('pwa-install-btn').onclick = function() {
+      document.getElementById('pwa-banner').style.display = 'none';
+      document.getElementById('ios-modal').style.display = 'flex';
+    };
+  }, 1500);
+}
+
+window.addEventListener('appinstalled', function() {
+  document.getElementById('pwa-banner').style.display = 'none';
+  localStorage.setItem('pwa-installed', '1');
+});
+</script>
+
 </body>
 </html>
